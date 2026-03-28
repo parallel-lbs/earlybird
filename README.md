@@ -18,15 +18,16 @@ Enrichment: Semantic Scholar (citation counts for top candidates).
 
 ```bash
 pip install -e .
+cp .env.example .env  # fill in your keys
 ```
 
 Optional env vars (`.env`):
 
-```
-HF_TOKEN=hf_...                   # higher HF rate limits
-SEMANTIC_SCHOLAR_API_KEY=...       # higher S2 rate limits
-EARLYBIRD_DATA_DIR=./data          # output directory (default: ./data)
-```
+| Variable | Required | When you need it | Where to get |
+|---|---|---|---|
+| `HF_TOKEN` | No | Add if HF sources return 429 errors, or if you scrape HF more than ~100 times/hour | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
+| `SEMANTIC_SCHOLAR_API_KEY` | No | Required if you use `--enrich` flag in production — without it you get 100 req/5 min which isn't enough for 200+ papers | [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api#api-key-form) |
+| `EARLYBIRD_DATA_DIR` | No | Set if you want output outside the repo, e.g. a shared volume or S3-mounted path | — |
 
 ## Usage
 
