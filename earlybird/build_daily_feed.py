@@ -20,6 +20,7 @@ from earlybird.config import DATA_DIR
 from earlybird.models import DailyFeed, Item
 from earlybird.pipeline.dedup import deduplicate
 from earlybird.pipeline.filter import keyword_filter
+from earlybird.pipeline.semantic_dedup import semantic_dedup
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,8 +56,11 @@ def build() -> DailyFeed:
     log.info("loaded %d raw items", total_raw)
 
     deduped = deduplicate(raw)
+    log.info("after exact dedup: %d", len(deduped))
+
+    deduped = semantic_dedup(deduped)
     total_dedup = len(deduped)
-    log.info("after dedup: %d", total_dedup)
+    log.info("after semantic dedup: %d", total_dedup)
 
     filtered = keyword_filter(deduped)
     total_filtered = len(filtered)
