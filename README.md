@@ -1,6 +1,8 @@
-# Earlybird
-
-Content radar for AI/tech — scrapes ~300-400 items/day from 15 sources, deduplicates, filters by keywords, and outputs a clean JSON feed for LLM scoring.
+<div align="center">
+  <img src="assets/logo.png" alt="Earlybird" width="320" /><br>
+  <strong>Earlybird</strong>
+  <p>Content radar for AI/tech — scrapes ~300-400 items/day from 15 sources,<br>deduplicates, filters by keywords, and outputs a clean JSON feed for LLM scoring.</p>
+</div>
 
 ## Sources
 
@@ -13,6 +15,8 @@ Content radar for AI/tech — scrapes ~300-400 items/day from 15 sources, dedupl
 | Podcasts | Latent Space, Lex Fridman, Acquired |
 
 Enrichment: Semantic Scholar (citation counts for top candidates).
+
+> **Not just AI/ML.** The architecture is domain-agnostic — swap or extend the source list to track any niche: crypto, biotech, climate, finance, policy. Adding a new source = one class + one line in `registry.py`.
 
 ## Setup
 
