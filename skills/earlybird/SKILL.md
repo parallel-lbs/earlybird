@@ -1,88 +1,233 @@
 ---
 name: earlybird
-description: Operate and analyze the Earlybird content radar pipeline — run source scrapers, build and inspect daily feeds, manage cron schedules, troubleshoot source failures, add new sources, and rank AI/tech items by novelty, signal strength, and practical founder relevance. Use when working with Earlybird feeds, source collection, signal filtering, or daily digest preparation.
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, CronCreate, CronList
+description: Operate and analyze the Earlybird content radar pipeline — fetch daily AI/tech feeds, rank items by novelty, signal strength, and founder relevance, prepare digests. Use when working with Earlybird feeds, signal filtering, content analysis, or daily digest preparation.
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🐦",
+        "requires": {},
+      },
+  }
 ---
 
 # Earlybird — Content Radar
 
-You are operating **Earlybird**, a content radar pipeline that collects AI/tech items from 15 sources, deduplicates (exact + semantic cosine similarity), filters by keywords, and produces a daily JSON feed.
+**Earlybird** is a content radar pipeline running at `api.8pilot.io`. It automatically scrapes 15 AI/tech sources on a cron schedule, deduplicates, filters, and produces a daily JSON feed.
 
-**This skill covers operations and analysis.** Final scoring and digest generation may be handled by a separate prompt or agent — this skill prepares, filters, and interprets the data for that stage.
+Scraping and data collection run on the server automatically. Your job as the agent is to **fetch, analyze, rank, and deliver digests**.
 
-## Project location
+## API
 
+Base URL: `http://api.8pilot.io`
+
+Auth header (required for all endpoints except `/health`):
 ```
-!`echo $PWD`
-```
-
-## Standard workflow
-
-1. Confirm you are in the Earlybird repo root.
-2. Run or inspect the relevant source scrapers.
-3. Build `data/daily-feed.json`.
-4. Inspect feed counts and a small sample of items.
-5. Apply filtering heuristics (see [scoring reference](references/scoring.md)):
-   - prioritize recency
-   - prioritize strong community validation
-   - prefer practical, buildable signals
-   - skip weak incremental work and duplicated coverage
-6. If needed, prepare a shortlist or digest for founder review.
-7. If a source is missing or failing, check [cron reference](references/cron.md) for heartbeat logs and troubleshooting.
-
-## Quick commands
-
-### Scrape sources
-
-```bash
-# Single group
-python -m earlybird.scraper --sources arxiv
-python -m earlybird.scraper --sources hn
-python -m earlybird.scraper --sources hf_papers hf_trending
-
-# All sources at once
-python -m earlybird.scraper --sources all
+Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI
 ```
 
-**Source groups:** `arxiv`, `hf_papers`, `hf_trending`, `pwc`, `hn`, `venture`, `newsletters`, `podcasts`, `all`.
+| Method | Path | Body | Description |
+|---|---|---|---|
+| GET | `/health` | — | Server alive check |
+| POST | `/scrape` | `{"sources": ["arxiv", "hn"]}` | Trigger manual scrape |
+| POST | `/build` | `{"enrich": false}` | Rebuild daily feed |
+| GET | `/feed?limit=50` | — | Get the daily feed |
+| GET | `/feed/{item_id}` | — | Get single item by ID |
+| GET | `/status` | — | Feed stats + heartbeat log |
 
-### Build the daily feed
+Source groups: `arxiv`, `hf_papers`, `hf_trending`, `pwc`, `hn`, `venture`, `newsletters`, `podcasts`, `all`.
 
-```bash
-# Standard
-python -m earlybird.build_daily_feed
+---
 
-# With Semantic Scholar citation enrichment (needs SEMANTIC_SCHOLAR_API_KEY for 200+ papers)
-python -m earlybird.build_daily_feed --enrich
-```
+## Server-side cron (runs automatically)
 
-Output: `data/daily-feed.json`
+Data collection is fully automated on the server. You do NOT need to trigger scrapes unless doing a manual refresh.
 
-### Read the feed
-
-```bash
-python -c "
-import json
-with open('data/daily-feed.json') as f:
-    feed = json.load(f)
-print(f'Items: {feed[\"total_after_filter\"]}')
-for it in feed['items'][:10]:
-    src = it['source']
-    title = it['title'][:80]
-    signals = []
-    if it.get('upvotes'): signals.append(f'{it[\"upvotes\"]}↑')
-    if it.get('hn_points'): signals.append(f'{it[\"hn_points\"]}pts')
-    if it.get('github_stars'): signals.append(f'{it[\"github_stars\"]}★')
-    if it.get('citation_count'): signals.append(f'{it[\"citation_count\"]} cites')
-    sig = ' '.join(signals)
-    print(f'  [{src}] {title}  {sig}')
-"
-```
-
-## References
-
-| Topic | File | When to read |
+| Schedule (UTC) | Sources | Why |
 |---|---|---|
-| Signal scoring & filtering | [references/scoring.md](references/scoring.md) | Evaluating items, building shortlists, deciding what to skip |
-| Cron, heartbeat & ops | [references/cron.md](references/cron.md) | Setting up schedules, checking pipeline health, troubleshooting failures |
-| Sources & extensibility | [references/sources.md](references/sources.md) | Adding new sources, understanding the feed schema, modifying the registry |
+| `0 */6 * * *` | `arxiv` | ArXiv updates ~20:00 UTC |
+| `0 8,20 * * *` | `hf_papers` | EU + US business hours |
+| `0 9 * * *` | `hf_trending` | Once daily |
+| `0 10 * * *` | `pwc` | Papers With Code daily |
+| `0 */4 * * *` | `hn` | HN moves fast |
+| `0 11 * * *` | `venture` | Crunchbase + YC + NFX |
+| `0 12 * * 3` | `newsletters` | Wednesdays |
+| `0 12 * * 5` | `podcasts` | Fridays |
+| `30 6 * * *` | build feed | Assembles daily-feed.json |
+
+Heartbeat is logged to `data/heartbeat.log` on the server. Check via `GET /status`.
+
+---
+
+## Your workflow as the agent
+
+### Morning digest (schedule at 07:00 UTC daily)
+
+1. **Health check:**
+   ```bash
+   curl -s http://api.8pilot.io/health
+   ```
+   If server is down, report and stop.
+
+2. **Fetch the feed** (cron already built it at 06:30):
+   ```bash
+   curl -s http://api.8pilot.io/feed?limit=50 \
+     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI"
+   ```
+
+3. **Check pipeline health:**
+   ```bash
+   curl -s http://api.8pilot.io/status \
+     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI"
+   ```
+   Check heartbeat — if any source has FAIL, note it in the digest.
+
+4. **Analyze and rank.** Apply scoring heuristics below. Produce a ranked top 10.
+
+5. **Prepare the digest.** For each item in top 10:
+   - One-line summary: what it is + why it matters
+   - Source and key signal (e.g. "42↑ on HF", "350pts on HN", "120★ GitHub")
+   - Link
+
+6. **Deliver** the digest to the user or target channel.
+
+### Evening scan (schedule at 19:00 UTC daily)
+
+Lighter pass — check for new high-signal items since the morning:
+
+1. **Trigger fresh scrape** of fast-moving sources:
+   ```bash
+   curl -s -X POST http://api.8pilot.io/scrape \
+     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI" \
+     -H "Content-Type: application/json" \
+     -d '{"sources": ["hn", "hf_papers"]}'
+   ```
+
+2. **Rebuild feed:**
+   ```bash
+   curl -s -X POST http://api.8pilot.io/build \
+     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI" \
+     -H "Content-Type: application/json" \
+     -d '{"enrich": false}'
+   ```
+
+3. **Fetch and compare** against morning digest — surface only new items.
+
+4. If 3+ genuinely new high-signal items, deliver a short evening update. Otherwise skip.
+
+---
+
+## Scoring & filtering
+
+### What makes an item high-value
+
+| Signal | Strong threshold | Why |
+|---|---|---|
+| HF upvotes | > 20 | ML practitioners voted |
+| HN points | > 300 | Broad tech community validated |
+| GitHub stars | > 100 | People are using it |
+| Citation count | > 50 (within weeks) | Foundational work |
+| Recency | Published within 48h | Fresh beats stale |
+| Source authority | HF Papers > PWC > raw ArXiv | Community-filtered |
+| Practical impact | Has repo, demo, benchmark | Can be built on |
+| Novelty | New architecture, SOTA, capability | Changes what's possible |
+
+### Signal combinations
+
+- **Paper + trending model + HN discussion** = breakthrough
+- **HF upvotes > 30 + GitHub repo** = immediately usable research
+- **YC launch + HN 200+** = validated product in early traction
+- **HN 500+ + no paper** = tool/product launch or industry event
+
+### What to skip
+
+- Surveys/reviews (unless > 100 citations)
+- Incremental benchmarks (< 1% improvement)
+- Company blog posts disguised as research
+- Duplicate coverage across sources
+- Theory with no code or application path
+- "Fine-tuned X on Y" without methodological novelty
+
+### Founder relevance lens
+
+Prioritize through this lens:
+
+1. **"Can I build on this?"** — new models, tools, APIs, infra
+2. **"Does this change the market?"** — funding, launches, acquisitions
+3. **"Should I know about this?"** — paradigm shifts, regulatory, talent
+4. **"Is this a threat or opportunity?"** — competitors, adjacent moves
+
+De-prioritize: pure theory, narrow domain, incremental academic work.
+
+### Keyword taxonomy
+
+For categorization:
+
+- **Core AI:** LLM, transformer, attention, GPT, language model, foundation model, fine-tuning, RLHF, alignment
+- **Methods:** diffusion, GAN, VAE, RL, RAG, agent, chain-of-thought, reasoning, MoE, distillation, quantization
+- **Infra:** GPU, TPU, CUDA, distributed training, serving, latency, throughput, scaling
+- **Business:** startup, funding, Series A/B, YC, open source, API, dev tools, moat, network effect
+- **Emerging:** robotics, embodied, world model, synthetic data, code generation, autonomous, multimodal
+
+---
+
+## Sources (15)
+
+| Source | Key | Frequency |
+|---|---|---|
+| ArXiv (cs.AI/LG/CL) | `arxiv` | Every 6h |
+| HF Daily Papers | `hf_papers` | 2x/day |
+| HF Trending Models | `hf_trending_models` | 1x/day |
+| HF Trending Spaces | `hf_trending_spaces` | 1x/day |
+| Papers With Code | `pwc` | 1x/day |
+| Hacker News | `hackernews` | Every 4h |
+| Crunchbase | `crunchbase` | 1x/day |
+| YC Launches | `yc_launches` | 1x/day |
+| NFX Essays | `nfx` | 1x/day |
+| The Batch | `the_batch` | Wed |
+| Import AI | `import_ai` | Wed |
+| Interconnects | `interconnects` | Wed |
+| Latent Space | `latent_space` | Fri |
+| Lex Fridman | `lex_fridman` | Fri |
+| Acquired | `acquired` | Fri |
+
+---
+
+## Feed JSON schema
+
+```json
+{
+  "scraped_at": "2026-03-29T06:30:00Z",
+  "total_raw": 387,
+  "total_after_dedup": 201,
+  "total_after_filter": 48,
+  "items": [
+    {
+      "id": "arxiv:2603.12345",
+      "source": "huggingface_papers",
+      "title": "...",
+      "abstract": "...",
+      "url": "https://huggingface.co/papers/2603.12345",
+      "upvotes": 34,
+      "published": "2026-03-28"
+    }
+  ]
+}
+```
+
+Item fields: `id`, `source`, `title`, `url`, `abstract`, `snippet`, `description`, `authors`, `category`, `pdf_url`, `arxiv_url`, `github_url`, `upvotes`, `github_stars`, `hn_points`, `hn_comments`, `citation_count`, `downloads`, `likes`, `type`, `tags`, `duration`, `published`, `scraped_at`.
+
+---
+
+## Troubleshooting
+
+**Feed empty or stale:**
+1. `GET /status` — check heartbeat. If sources show FAIL, note which ones.
+2. If all sources FAIL — server may be down. Try `GET /health`.
+3. Trigger manual scrape: `POST /scrape {"sources": ["all"]}`, then `POST /build`.
+
+**Source returns 0 items:**
+- ArXiv / HF Papers on weekends — normal.
+- HN 0 items — keyword filter too narrow for today.
+
+**Server unreachable:** Report to the user. Server is at `158.160.193.93`, service name `earlybird`.
