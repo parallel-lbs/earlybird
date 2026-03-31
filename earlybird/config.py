@@ -63,6 +63,40 @@ KEYWORDS: list[str] = [
     "code generation", "autonomous", "multimodal",
 ]
 
+# ── Backfill ────────────────────────────────────────────────────────────────
+BACKFILL_DIR = DATA_DIR / "backfill"
+BACKFILL_DIR.mkdir(parents=True, exist_ok=True)
+
+# ── Map pipeline ────────────────────────────────────────────────────────────
+MAP_DIR = DATA_DIR / "map"
+MAP_DIR.mkdir(parents=True, exist_ok=True)
+EMBEDDINGS_DIR = DATA_DIR / "embeddings"
+EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+UMAP_N_NEIGHBORS = 30
+UMAP_MIN_DIST = 0.3
+LEIDEN_RESOLUTION = 0.8
+KNN_K = 15
+KNN_THRESHOLD = 0.3
+
+# Cluster colors (20 distinct colors for up to 20 clusters)
+CLUSTER_COLORS = [
+    "#4a90d9", "#e74c3c", "#2ecc71", "#f39c12", "#9b59b6",
+    "#1abc9c", "#e67e22", "#3498db", "#e91e63", "#00bcd4",
+    "#ff5722", "#8bc34a", "#673ab7", "#ff9800", "#009688",
+    "#795548", "#607d8b", "#cddc39", "#ffc107", "#03a9f4",
+]
+
+# ── Inter-cluster connections ───────────────────────────────────────────────
+CONNECTION_THRESHOLD = 0.4
+CONNECTION_MAX_EDGES = 30
+CONNECTION_CURVATURE = 0.2
+
+# ── Sub-topic labels ───────────────────────────────────────────────────────
+SUB_CLUSTERS_PER_CLUSTER = 3
+SUB_LABEL_MIN_ITEMS = 6
+
 # ── Lex Fridman episode filter keywords ──────────────────────────────────────
 LEX_KEYWORDS: list[str] = [
     "AI", "machine learning", "deep learning", "neural", "GPT", "LLM",

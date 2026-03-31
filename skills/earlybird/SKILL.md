@@ -15,7 +15,54 @@ metadata:
 
 **Earlybird** is a content radar pipeline running at `api.8pilot.io`. It automatically scrapes 15 AI/tech sources on a cron schedule, deduplicates, filters, and produces a daily JSON feed.
 
-Scraping and data collection run on the server automatically. Your job as the agent is to **fetch, analyze, rank, and deliver digests**.
+Scraping and data collection run on the server automatically. Your job as the agent is to **configure preferences, schedule jobs, fetch feeds, analyze, rank, and deliver digests**.
+
+---
+
+## First run setup
+
+On first use, check if a preferences file exists at `~/.earlybird/preferences.json`.
+
+**If it does NOT exist**, ask the user the following questions. If the user skips any question, use the default.
+
+| Question | Default | Saved as |
+|---|---|---|
+| What topics do you care about? | `["AI/ML", "startups", "infrastructure"]` | `topics` |
+| Morning digest time? | `07:00 UTC` | `morning_time` |
+| Evening scan time? (or skip) | `19:00 UTC` | `evening_time` |
+| Timezone? | `UTC` | `timezone` |
+| Digest format: short (1-line per item) or detailed (summary + why it matters)? | `detailed` | `format` |
+| How many items in the digest? | `10` | `top_n` |
+| Delivery channel? (this chat / specific channel) | `this chat` | `channel` |
+| Any keywords to always include, even if low signal? | `[]` | `must_include_keywords` |
+| Any keywords to always exclude? | `[]` | `exclude_keywords` |
+
+After collecting answers, save:
+
+```bash
+mkdir -p ~/.earlybird
+cat > ~/.earlybird/preferences.json << 'EOF'
+{
+  "topics": ["AI/ML", "startups", "infrastructure"],
+  "morning_time": "07:00",
+  "evening_time": "19:00",
+  "timezone": "UTC",
+  "format": "detailed",
+  "top_n": 10,
+  "channel": "this chat",
+  "must_include_keywords": [],
+  "exclude_keywords": []
+}
+EOF
+```
+
+Then set up scheduled jobs based on the user's preferred times (see Scheduled jobs section).
+
+**If preferences already exist**, load them and proceed to the workflow.
+
+To reconfigure later, the user can say "reconfigure earlybird" or "change earlybird settings".
+
+---
 
 ## API
 
@@ -39,9 +86,45 @@ Source groups: `arxiv`, `hf_papers`, `hf_trending`, `pwc`, `hn`, `venture`, `new
 
 ---
 
+## Scheduled jobs
+
+Set up these jobs based on user preferences. Use `openclaw cron add` or the platform's scheduler.
+
+### Morning digest
+
+**Schedule:** user's `morning_time` (default 07:00 UTC daily)
+**Job name:** `earlybird:morning-digest`
+
+Steps:
+
+1. `GET /health` — if down, report and stop.
+2. `GET /feed?limit={top_n * 3}` — fetch candidates (3x top_n to have room for filtering).
+3. `GET /status` — check heartbeat for failures.
+4. Apply scoring heuristics (see below) filtered by user's `topics`, `must_include_keywords`, `exclude_keywords`.
+5. Rank and select top `{top_n}` items.
+6. Format digest according to `{format}` preference:
+   - **short:** `[source] Title (signal) — link`
+   - **detailed:** Title, one-line summary, why it matters, source + signal, link
+7. Deliver to `{channel}`.
+
+### Evening scan
+
+**Schedule:** user's `evening_time` (default 19:00 UTC daily)
+**Job name:** `earlybird:evening-scan`
+
+Steps:
+
+1. `POST /scrape {"sources": ["hn", "hf_papers"]}` — refresh fast-moving sources.
+2. `POST /build {"enrich": false}` — rebuild.
+3. `GET /feed?limit=20` — fetch latest.
+4. Compare against morning digest — only surface **new** items.
+5. If 3+ new high-signal items, deliver a short update. Otherwise skip silently.
+
+---
+
 ## Server-side cron (runs automatically)
 
-Data collection is fully automated on the server. You do NOT need to trigger scrapes unless doing a manual refresh.
+Data collection runs on the server. You do NOT need to trigger scrapes unless doing a manual refresh.
 
 | Schedule (UTC) | Sources | Why |
 |---|---|---|
@@ -55,65 +138,7 @@ Data collection is fully automated on the server. You do NOT need to trigger scr
 | `0 12 * * 5` | `podcasts` | Fridays |
 | `30 6 * * *` | build feed | Assembles daily-feed.json |
 
-Heartbeat is logged to `data/heartbeat.log` on the server. Check via `GET /status`.
-
----
-
-## Your workflow as the agent
-
-### Morning digest (schedule at 07:00 UTC daily)
-
-1. **Health check:**
-   ```bash
-   curl -s http://api.8pilot.io/health
-   ```
-   If server is down, report and stop.
-
-2. **Fetch the feed** (cron already built it at 06:30):
-   ```bash
-   curl -s http://api.8pilot.io/feed?limit=50 \
-     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI"
-   ```
-
-3. **Check pipeline health:**
-   ```bash
-   curl -s http://api.8pilot.io/status \
-     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI"
-   ```
-   Check heartbeat — if any source has FAIL, note it in the digest.
-
-4. **Analyze and rank.** Apply scoring heuristics below. Produce a ranked top 10.
-
-5. **Prepare the digest.** For each item in top 10:
-   - One-line summary: what it is + why it matters
-   - Source and key signal (e.g. "42↑ on HF", "350pts on HN", "120★ GitHub")
-   - Link
-
-6. **Deliver** the digest to the user or target channel.
-
-### Evening scan (schedule at 19:00 UTC daily)
-
-Lighter pass — check for new high-signal items since the morning:
-
-1. **Trigger fresh scrape** of fast-moving sources:
-   ```bash
-   curl -s -X POST http://api.8pilot.io/scrape \
-     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI" \
-     -H "Content-Type: application/json" \
-     -d '{"sources": ["hn", "hf_papers"]}'
-   ```
-
-2. **Rebuild feed:**
-   ```bash
-   curl -s -X POST http://api.8pilot.io/build \
-     -H "Authorization: Bearer ASUEITsAgEfWKyxlXEgyT6Q6NcZnWUjawmWyQZbHKvI" \
-     -H "Content-Type: application/json" \
-     -d '{"enrich": false}'
-   ```
-
-3. **Fetch and compare** against morning digest — surface only new items.
-
-4. If 3+ genuinely new high-signal items, deliver a short evening update. Otherwise skip.
+Check health via `GET /status`.
 
 ---
 
@@ -148,16 +173,21 @@ Lighter pass — check for new high-signal items since the morning:
 - Theory with no code or application path
 - "Fine-tuned X on Y" without methodological novelty
 
-### Founder relevance lens
+### Applying user preferences
 
-Prioritize through this lens:
+When scoring, also apply:
+
+- **`topics`** — boost items matching user's topics
+- **`must_include_keywords`** — always include items with these keywords regardless of score
+- **`exclude_keywords`** — always drop items with these keywords
+- If user has a specific role (founder, researcher, engineer), adjust the relevance lens accordingly
+
+### Founder relevance lens (default)
 
 1. **"Can I build on this?"** — new models, tools, APIs, infra
 2. **"Does this change the market?"** — funding, launches, acquisitions
 3. **"Should I know about this?"** — paradigm shifts, regulatory, talent
 4. **"Is this a threat or opportunity?"** — competitors, adjacent moves
-
-De-prioritize: pure theory, narrow domain, incremental academic work.
 
 ### Keyword taxonomy
 
@@ -222,12 +252,12 @@ Item fields: `id`, `source`, `title`, `url`, `abstract`, `snippet`, `description
 ## Troubleshooting
 
 **Feed empty or stale:**
-1. `GET /status` — check heartbeat. If sources show FAIL, note which ones.
-2. If all sources FAIL — server may be down. Try `GET /health`.
-3. Trigger manual scrape: `POST /scrape {"sources": ["all"]}`, then `POST /build`.
+1. `GET /status` — check heartbeat.
+2. If all FAIL — `GET /health`. If down, report to user.
+3. Manual refresh: `POST /scrape {"sources": ["all"]}`, then `POST /build`.
 
 **Source returns 0 items:**
 - ArXiv / HF Papers on weekends — normal.
-- HN 0 items — keyword filter too narrow for today.
+- HN 0 items — keyword filter too narrow.
 
-**Server unreachable:** Report to the user. Server is at `158.160.193.93`, service name `earlybird`.
+**Server unreachable:** Report to user. Server at `158.160.193.93`, service `earlybird`.

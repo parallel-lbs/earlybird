@@ -14,12 +14,39 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
+from earlybird.auth import verify_token
 from earlybird.config import DATA_DIR
 
-app = FastAPI(title="Earlybird", version="0.1.0")
+app = FastAPI(title="Earlybird", version="0.2.0")
+
+# CORS for local development and frontend served from different origin
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount map router and static frontend
+from earlybird.map_api import map_router
+app.include_router(map_router, prefix="/map")
+
+# Mount admin router
+from earlybird.admin_api import admin_router
+app.include_router(admin_router)
+
+from fastapi.staticfiles import StaticFiles
+_frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+if _frontend_dir.exists():
+    # Admin static files must be mounted BEFORE /app so FastAPI matches them first
+    _admin_dir = _frontend_dir / "admin"
+    if _admin_dir.exists():
+        app.mount("/admin", StaticFiles(directory=str(_admin_dir), html=True), name="admin-frontend")
+    app.mount("/app", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,20 +54,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("earlybird.api")
-
-# ── Auth (optional) ─────────────────────────────────────────────────────────
-
-import os
-
-API_TOKEN = os.environ.get("EARLYBIRD_API_TOKEN")
-
-
-def verify_token(authorization: str | None = Header(None)):
-    if not API_TOKEN:
-        return  # no token configured = open access
-    if authorization != f"Bearer {API_TOKEN}":
-        raise HTTPException(status_code=401, detail="invalid token")
-
 
 # ── Models ───────────────────────────────────────────────────────────────────
 

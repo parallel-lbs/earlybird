@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Earlybird — Map of AI Research</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Search bar -->
+  <div id="search-bar">
+    <input type="text" id="search-input" placeholder="Search categories, topics, items..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+
+  <!-- Info panel -->
+  <div id="panel" class="hidden">
+    <button id="panel-close">&times;</button>
+    <div id="panel-content"></div>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend">
+    <div id="legend-title">Categories</div>
+    <div id="legend-items"></div>
+  </div>
+
+  <!-- Loader -->
+  <div id="loader">
+    <div class="spinner"></div>
+    <div>Loading map data...</div>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+  <script src="panel.js"></script>
+  <script src="search.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

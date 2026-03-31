@@ -14,18 +14,25 @@ class HFPapersSource(Source):
 
     def _fetch(self) -> list[Item]:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return self._fetch_for_date(today, min_upvotes=HF_PAPERS_MIN_UPVOTES)
+
+    def fetch_date(self, date: str, min_upvotes: int = 3) -> list[Item]:
+        """Fetch papers for a specific date (YYYY-MM-DD), with a lower upvote threshold for historical data."""
+        return self._fetch_for_date(date, min_upvotes=min_upvotes)
+
+    def _fetch_for_date(self, date: str, min_upvotes: int = 5) -> list[Item]:
         headers = {}
         if HF_TOKEN:
             headers["Authorization"] = f"Bearer {HF_TOKEN}"
 
-        resp = self._get(API_URL, params={"date": today}, headers=headers)
+        resp = self._get(API_URL, params={"date": date}, headers=headers)
         data = resp.json()
 
         items: list[Item] = []
         for entry in data:
             paper = entry.get("paper", {})
             upvotes = entry.get("numUpvotes", 0)
-            if upvotes < HF_PAPERS_MIN_UPVOTES:
+            if upvotes < min_upvotes:
                 continue
 
             arxiv_id = paper.get("id", "")
